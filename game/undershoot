@@ -1,0 +1,222 @@
+#!/usr/bin/python3
+
+from entity import Entity, Player, Asteroid, Projectile
+from conf import *
+from tester import make_controller_surface
+from lost_screen import draw_lost_screen
+
+
+import pygame
+import pygame._sdl2.controller
+import sys
+import os
+
+import time
+
+import random
+
+CONTROLLER_WIDTH  = 1318
+CONTROLLER_HEIGHT = int(CONTROLLER_WIDTH / 2.32)
+
+# @todo: handle new controllers
+# better asteroid generation - specify size, only natural shapes
+
+pygame.init()
+pygame.display.set_caption('undershoot')
+pygame.display.set_icon(pygame.image.load('images/icon.png'))
+
+
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+clock = pygame.time.Clock()
+
+pygame._sdl2.controller.init()
+controllers = [ pygame._sdl2.controller.Controller(x)
+                for x in range(pygame.joystick.get_count())
+                if pygame._sdl2.controller.is_controller(x) ]
+
+pygame.font.init()
+
+my_font = pygame.font.Font(GUI_FONT, 35)
+big_font = pygame.font.Font(GUI_FONT, 65)
+
+def menu_loop():
+    start = big_font.render(f'PRESS A TO START', True, OBJECT_COLOR)
+    start_rect = start.get_rect(center=(WIDTH/2, HEIGHT/2))
+
+    buttons = [ False ] * 20
+
+    state = MENU
+
+    SIZE = 80
+    current_controller_size = Vector2(CONTROLLER_WIDTH, CONTROLLER_HEIGHT)
+    min_controller_size = Vector2(SIZE * 2.32, SIZE)
+
+    # this is how I currently do starting animation
+    # and its very very bad
+    # code in this place is, in general, very very bad
+    diff_count = 165
+    diff = (current_controller_size - min_controller_size) / diff_count
+    print(diff)
+
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            elif event.type == pygame.CONTROLLERBUTTONDOWN:
+                button = event.button
+                if button == BUTTON_START: 
+                    state = LOAD
+                    counter = diff_count
+                    current_controller_size = Vector2(CONTROLLER_WIDTH, CONTROLLER_HEIGHT)
+                    
+            if event.type == pygame.CONTROLLERBUTTONDOWN or event.type == pygame.CONTROLLERBUTTONUP:
+                buttons[event.button] = (event.type == pygame.CONTROLLERBUTTONDOWN)
+
+
+        screen.fill(BACKGROUND)
+
+        controller_surface = make_controller_surface(buttons)
+        if state == LOAD:
+            current_controller_size *= 0.993
+            controller_surface = pygame.transform.smoothscale(controller_surface, current_controller_size)
+
+            if (current_controller_size - min_controller_size).length() < 3:
+                game_loop()
+                state = MENU
+
+        screen.blit(controller_surface, controller_surface.get_rect(center=(WIDTH/2, HEIGHT/2)))
+
+        pygame.display.flip()
+
+def game_loop():
+    score = 0
+    p = Player()
+
+    asteroids = [ Asteroid(player=p) ]
+    projectiles = []
+    
+    last_time = time.perf_counter_ns()
+    delta_time = 5
+    times = []
+    time_sum = 1
+
+    state = PLAY
+
+    running = True
+
+    buttons = [ False ] * 16
+
+    start = time.time()
+
+    while running:
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            elif event.type == pygame.CONTROLLERBUTTONDOWN:
+                if state == PLAY:
+                    if event.button == BUTTON_X:
+                        x = Projectile(p.hitbox.middle, p.get_direction())
+                        projectiles.append(x)
+
+                elif state == LOST:
+                    if event.button == BUTTON_A:  # exit game loop
+                        running = False
+
+            if event.type == pygame.CONTROLLERBUTTONDOWN or event.type == pygame.CONTROLLERBUTTONUP:
+                buttons[event.button] = (event.type == pygame.CONTROLLERBUTTONDOWN)
+
+        p.update(delta_time, buttons)
+
+        # rate is: 6 + 4*minute per minute
+        # what is the chance of spawning asteroid in last dt considering current rate?
+        # 6 per 60 seconds is 1 per 10 seconds, or 1/10 chance every second
+        # that is 1 / 10_000 chance every millisecond?
+
+        # maybe add new asteroid
+        minutes = int((time_sum / (60 * 1000)))
+        rate = 10 + 5*minutes
+        chance = int(rate * delta_time*100) 
+        if random.randint(0, 60_000*100) < chance:
+            asteroids.append(Asteroid(player=p))
+
+        for a in asteroids:
+            a.update(delta_time)
+
+            if p.maybe_collides(a) and state == PLAY:
+                if p.collides(a) and p.shield <= 0:
+                    p.shield = 2500
+                    p.move_to((WIDTH/2, HEIGHT/2))
+                    p.velocity = Vector2(0)
+
+                    p.lifetime -= 1
+                    if p.lifetime == 0:
+                        state = LOST
+
+        new_asteroids = []
+        for i, x in enumerate(projectiles):
+            x.update(delta_time)
+            for j, a in enumerate(asteroids):
+                if a.maybe_collides(x):
+                    if x.collides(a):
+                        if state == PLAY:
+                            score += int(a.size)
+
+                        asteroids[j].lifetime -= 1
+                        projectiles[i].lifetime = 0
+
+                        if a.lifetime == 0:
+                            # spawn 2 new asteroids in place of this
+                            if a.size > 10:
+                                pos = a.hitbox.middle
+                                dir = a.get_direction()
+                                size = a.size/2 * 0.8
+                                new_asteroids.append(Asteroid(pos, dir.rotate( 90), size))
+                                new_asteroids.append(Asteroid(pos, dir.rotate(-90), size))
+
+        projectiles = [ x for x in projectiles if x.lifetime > 0 ]
+        asteroids   = [ a for a in   asteroids if a.lifetime > 0 ] + new_asteroids
+
+        screen.fill(BACKGROUND)
+
+        for a in asteroids:
+            a.draw(screen)
+        for x in projectiles:
+            x.draw(screen)
+
+        if state == PLAY:
+            p.draw(screen)
+
+            screen.blit(my_font.render(f'SCORE: {score}',      True, OBJECT_COLOR), (15,  5))
+            screen.blit(my_font.render(f'LIFE:  {p.lifetime}', True, OBJECT_COLOR), (15, 50))
+
+        else:
+            draw_lost_screen(screen, score)
+
+        pygame.display.flip()
+
+        if not unlocked:
+            clock.tick(165)
+
+        new_time = time.perf_counter_ns()
+        delta_time = (new_time - last_time) / 1_000_000
+        times.append(delta_time)
+        time_sum += delta_time
+        last_time = new_time
+
+    frames = len(times)
+    average = sum(times) / frames
+    fps_average = 1000 /  average
+    print('frames:', frames)
+    print('average frame render time:', f'{round(average, 2)}ms')
+    print('fps average:', round(fps_average, 2))
+    print('time: ', time.time() - start)
+    print('time sum: ', time_sum)
+
+
+menu_loop()
+
+pygame.quit()
