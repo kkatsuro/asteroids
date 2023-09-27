@@ -39,6 +39,25 @@ pygame.font.init()
 my_font = pygame.font.Font(GUI_FONT, 35)
 big_font = pygame.font.Font(GUI_FONT, 65)
 
+
+keymap = {
+    pygame.K_w: DPAD_UP,
+    pygame.K_a: DPAD_LEFT,
+    pygame.K_s: DPAD_DOWN,
+    pygame.K_d: DPAD_RIGHT,
+    pygame.K_b: BUTTON_SELECT,
+
+    pygame.K_SPACE: BUTTON_START,
+    pygame.K_RETURN: BUTTON_START,
+
+    pygame.K_j: BUTTON_X,
+    pygame.K_k: BUTTON_A,
+}
+def key_to_button_translate(key):
+    '''Quick solution to support keyboard input'''
+    return keymap.get(key)
+
+
 def menu_loop():
     start = big_font.render(f'PRESS A TO START', True, OBJECT_COLOR)
     start_rect = start.get_rect(center=(WIDTH/2, HEIGHT/2))
@@ -64,15 +83,23 @@ def menu_loop():
             if event.type == pygame.QUIT:
                 running = False
 
-            elif event.type == pygame.CONTROLLERBUTTONDOWN:
-                button = event.button
-                if button == BUTTON_START: 
+            # shouldn't this happen on key release?
+            elif event.type == pygame.CONTROLLERBUTTONDOWN and event.button == BUTTON_START or \
+                 event.type == pygame.KEYDOWN and (event.key == pygame.K_SPACE or event.key == pygame.K_RETURN):
+
+                if state != LOAD:
                     state = LOAD
                     counter = diff_count
                     current_controller_size = Vector2(CONTROLLER_WIDTH, CONTROLLER_HEIGHT)
                     
             if event.type == pygame.CONTROLLERBUTTONDOWN or event.type == pygame.CONTROLLERBUTTONUP:
                 buttons[event.button] = (event.type == pygame.CONTROLLERBUTTONDOWN)
+
+            if event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
+                button = key_to_button_translate(event.key)
+                if button != None:
+                    buttons[button] = (event.type == pygame.KEYDOWN)
+                    print(buttons[button])
 
 
         screen.fill(BACKGROUND)
@@ -126,8 +153,23 @@ def game_loop():
                     if event.button == BUTTON_A:  # exit game loop
                         running = False
 
+            if event.type == pygame.KEYDOWN:
+                if state == PLAY:
+                    if event.key == pygame.K_j:
+                        x = Projectile(p.hitbox.middle, p.get_direction())
+                        projectiles.append(x)
+
+                elif state == LOST:
+                    if event.key == pygame.K_k:  # exit game loop
+                        running = False
+
             if event.type == pygame.CONTROLLERBUTTONDOWN or event.type == pygame.CONTROLLERBUTTONUP:
                 buttons[event.button] = (event.type == pygame.CONTROLLERBUTTONDOWN)
+
+            if event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
+                button = key_to_button_translate(event.key)
+                if button != None:
+                    buttons[button] = (event.type == pygame.KEYDOWN)
 
         p.update(delta_time, buttons)
 
