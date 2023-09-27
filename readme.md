@@ -1,7 +1,10 @@
 # asteroids game clone
 run undershoot from game directory to run the game (I called it undershoot but then I forgot about it...).
 
-I wrote [documentation](docs/specyfikacja.pdf) with explanation of basic mechanics (Polish).
+I wrote [documentation](docs/specyfikacja.pdf) with explanation of basic mechanics (in Polish).
+
+
+https://github.com/kkatsuro/asteroids/assets/80922583/41188b68-07ad-4259-9dc4-bd865be89216
 
 
 # Some resources I used
